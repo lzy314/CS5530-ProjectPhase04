@@ -1,0 +1,151 @@
+Global navigation menu is now closed
+CS 5530-090 Spring 2025
+Assignments
+
+Home
+Syllabus
+Announcements
+Gradescope
+Grades
+Modules
+Piazza
+Smart Search
+Project Phase 4
+Project Phase 4
+Due: Tue Apr 22, 2025 11:59pm2025/4/22
+Ungraded, 0 Possible Points
+0 Points Possible
+
+Project - Phase 4 (Deploying Your LMS)
+Although this is listed as 0 points, this phase is required for us to grade your project Phase 3. If you don't do this phase, we can't grade your project, which means Phase 3 will receive 0 points.
+
+In this phase, you will deploy your LMS web server to an online Linux machine.
+
+Part 1 - Make Sure You Have Your Key
+There should be a new table called sshkey in your TeamXLMS database. This table won't be part of your LMS product, it's just a way for us to easily distribute a different key to each team.
+
+In this project phase, you will deploy your web server to a Linux VM on the web, and ensure that it is running stably. Each team has been given an SSH key that grants root access to your own Linux VM hosted by CADE. These VMs have the HTTPS ports open, so you can run your web server and connect to it from the outside world with a browser.
+
+Extract your key
+The sshkey table has a single row of text containing your ssh key. You need to extract that text exactly into a file. The easiest way to do this is from a CADE lab1 machine.
+
+SSH into one of the CADE lab1 machines first.
+
+From your CADE terminal, run the below command (be sure to replace placeholders with your specifics, such as username and database):
+
+mysql -h atr.eng.utah.edu -u your_uid -p -e 'select * from TeamXLMS.sshkey' -sN --raw --ssl-verify-server-cert > dbkey
+This will ask for your password, then it will run and appear to have done nothing, but it will produce a file called dbkey - this is your ssh key (used in part 2 below).
+
+Now run the following command to restrict the permissions on that new file:
+
+chmod 600 dbkey
+If you're curious about what's going on with the mysql command:
+
+This is just running an sql command without actually opening the mysql terminal (it selects * from your sshkey table). The -sN and --raw are formatting options so that the output doesn't contain table headers and lines are preserved. The > dbkey places the output of that command into a file called dbkey.
+
+Part 2 - login to Your VM
+For simplicity, we will assume you do this setup from a CADE Linux machine (lab1 or lab2). SSH into one of those machines, and do your work from there. You can access your VM directly from your own machine if you desire, but we can't promise to be able to help.
+
+Transfer your entire LMS solution folder to a CADE machine. Remove any bin/ and obj/ folders first to cut down on the transfer time and disk requirements. Use any method you want to transfer your code to the CADE machine (sftp, scp, WinSCP, clone it from a git repo, ...).
+Now on a CADE machine, run the following commands to temporarily add the ssh key to your session, so that you can then login to the VM from the CADE machine. These commands assume you are using tcsh, not bash, and it assumes you are in the directory where your dbkey file is. Note: those are NOT single quote marks, copy/paste the commands instead of retyping them.
+eval `ssh-agent`
+ssh-add dbkey
+(from a CADE machine) Now you should be able to login as root to your VM. The name of your VM is: db-X.coe.utah.edu where X is your team number with leading zeroes up to 3 digits. For example, if your team is 1, replace X with 001. If your team is 20, replace X with 020. Remember to replace "X" with your 3-digit team number in all subsequent commands involving your VM's name.
+
+Login through ssh:
+
+ssh root@db-X.coe.utah.edu
+It will ask if you're sure you want to proceed, type "yes".
+
+Now you should be logged in. Notice it didn't ask for a password - that's because you just setup the SSH key that grants you access.
+
+You are now logged in to a CADE machine through SSH, and from there are logged into your VM also through SSH. You could instead log in directly form your own machine if you know how to add an ssh key on your own machine.
+
+Part 3 - Install .NET
+Now you need to install the Linux implementation of the .NET runtime and SDK so it can run your web server. Run the following command:
+
+dnf install dotnet-sdk-9.0
+It may take a moment to respond. When it asks if it's OK to proceed, press y.
+
+Part 4 - Set up Your Web Server
+On your VM, make a directory where your web server files will go. By convention, a lot of systems put them in /var/www, so we will create that directory now:
+mkdir /var/www
+Now type "exit" to logout of your VM, so that you can transfer your web server project from CADE to your VM.
+
+(from a CADE machine) Transfer it to your VM using scp:
+
+scp -r <lms_solution_folder> root@db-X.coe.utah.edu:/var/www
+Where <lms_solution_folder> is the path to your entire LMS solution directory.
+
+Now SSH back into your VM.
+
+Go to your LMS solution directory:
+
+cd /var/www/<lms_solution_folder>
+From there, go into your LMS project directory.
+
+cd LMS
+Setup user secrets
+Just as you did in project Phase 3, you need to setup user secrets so that your LMS can access atr. Run the same commands you did in Phase 3. IMPORTANT: pay attention to which database is being used in the commands below - replace the placeholders with the right values!
+dotnet user-secrets init
+dotnet user-secrets set "LMS:IdentityConnectionString" "database=TeamXLMSUsers;uid=YOURUID;password=YOURPASSWORD;server=atr.eng.utah.edu;Pooling=false"
+dotnet user-secrets set "LMS:LMSConnectionString" "database=TeamXLMS;uid=YOURUID;password=YOURPASSWORD;server=atr.eng.utah.edu;Pooling=false"
+Run your web server:
+dotnet run --urls https://*:443
+The --urls option allows the web server to accept connections from the outside, on the standard https port (443). It will take a while to build and startup, and you should see something like "Content root path: /var/www/LMS" when it's ready.
+
+Now test that it's working. On your local machine, open a web browser and go to:
+
+https://db-X.coe.utah.edu/
+Your browser will report a security warning since the certificate is self-signed. Go through the steps to add an exception or proceed anyway. If you can't find a way to accept the certificate, use a different browser.
+
+Once you are in, make sure your web server is working by logging in as one of your LMS users and visit a few pages.
+
+Monitoring Queries
+You may find it interesting to watch the terminal output of your VM as you interact with your LMS in the web browser. It will print the SQL queries that the LINQ translator produces when your controllers run. Remind yourself that LINQ is an abstraction and it really does get compiled down to working SQL under the hood.
+
+Part 5 - tmux
+Your web server is currently only running as long as you are logged in on your VM. We want it to continue running, even if you lose your connection or log out of your VM. To do that, we will use a program called tmux, which can detach an SSH session.
+
+First, stop your web server if it's still running (ctrl-c).
+
+Now install tmux:
+
+yum install tmux
+Now run tmux:
+
+tmux
+Now within tmux, run your web server again, as you did before:
+
+dotnet run --urls https://*:443
+Now detach the tmux session
+
+ctrl-b d
+(that's ctrl-b, then release ctrl-b, then press d)
+
+Now logout of your VM:
+
+exit
+Now verify your web server is still running by refreshing it in your browser and trying a few more pages.
+
+If you need to re-attach your session later, such as to stop and restart your server, or upload a new version, SSH back into your VM, and run:
+
+tmux ls
+It should print something like this:
+
+0: 1 windows ...
+That first number before the colon is the session number (it might not always be 0). To reattach the session, run:
+
+tmux attach-session -t 0
+assuming 0 is the session number (but again, yours might be different).
+
+Now you can stop your server with ctrl-c.
+
+To stop the tmux session altogether after reattaching it, just run "exit".
+
+Submit
+There is no submission for Phase 4. Just make sure that your web server is running and stable, even after logging out of your SSH session to your VM. Double-check that you can still use a web browser to access all the functionality of your web server after logging out. This is how we will grade your web server.
+
+Grading
+The steps in this phase of the project are to enable grading of Phase 3. There is no score directly associated with Phase 4.
+
